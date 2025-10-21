@@ -6,12 +6,20 @@ const manifest: chrome.runtime.ManifestV3 = {
   manifest_version: 3,
   name,
   version,
+  description: "Shows approval count badges on GitHub pull requests",
+  host_permissions: ["https://github.com/*"],
   content_scripts: [
     {
-      matches: ["https://github.com/*"],
+      matches: ["https://github.com/*/pulls*"],
       js: ["content.js"],
+      run_at: "document_idle",
     },
   ],
+  icons: {
+    16: "icon16.png",
+    48: "icon48.png",
+    128: "icon128.png",
+  },
 };
 
 fs.writeFileSync(
