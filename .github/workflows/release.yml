@@ -1,0 +1,27 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    
+    steps:
+    - name: Extract version from tag
+      id: version
+      run: |
+        # Remove 'v' prefix from tag to get version number
+        VERSION=${GITHUB_REF#refs/tags/v}
+        echo "version=$VERSION" >> $GITHUB_OUTPUT
+        echo "Extracted version: $VERSION"
+        
+    - name: Build with version and create artifact
+      uses: ./.github/workflows/build.yml
+      with:
+        version: ${{ steps.version.outputs.version }}
+        create_artifact: true
