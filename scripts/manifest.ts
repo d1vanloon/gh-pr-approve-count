@@ -1,10 +1,10 @@
 import fs from "node:fs";
 import path from "node:path";
-import { name, version } from "../package.json";
+import { version } from "../package.json";
 
 const manifest: chrome.runtime.ManifestV3 = {
   manifest_version: 3,
-  name,
+  name: "GitHub Pull Request Approval Count",
   version,
   description: "Shows approval count badges on GitHub pull requests",
   host_permissions: ["https://github.com/*"],
