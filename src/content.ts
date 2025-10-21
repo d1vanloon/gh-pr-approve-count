@@ -5,7 +5,7 @@ setInterval(run, 1000); // for spa navigation
 let lock = false;
 async function run() {
   if (lock) return;
-  if (!location.href.endsWith("pulls")) return;
+  if (!location.href.includes("/pulls")) return;
   if (document.getElementsByClassName(APPROVE_COUNT_CLASS).length > 0) return;
 
   lock = true;
@@ -43,12 +43,8 @@ async function findApproveCountAriaLabelByRow(row: Element): Promise<string | nu
 function createApproveCountBadge(approveCount: number) {
   const span = document.createElement("span");
   span.classList.add(APPROVE_COUNT_CLASS);
+  span.classList.add("ml-2", "flex-1", "flex-shrink-0");
   span.append(`✅ ${approveCount}`);
-  span.style.display = "flex";
-  span.style.fontSize = "14px";
-  span.style.color = "var(--color-fg-muted)";
-  span.style.marginTop = "3px";
-  span.style.marginLeft = "16px";
 
   return span;
 }
