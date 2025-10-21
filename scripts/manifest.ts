@@ -10,7 +10,7 @@ const manifest: chrome.runtime.ManifestV3 = {
   host_permissions: ["https://github.com/*"],
   content_scripts: [
     {
-      matches: ["https://github.com/*/pulls*"],
+      matches: ["https://github.com/*/pulls*", "https://github.com/pulls*"],
       js: ["content.js"],
       run_at: "document_idle",
     },
