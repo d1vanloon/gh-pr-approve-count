@@ -7,8 +7,8 @@ on:
         description: 'Version to set in package.json (optional)'
         required: false
         type: string
-      create_artifact:
-        description: 'Whether to create a release artifact'
+      create_release:
+        description: 'Whether to create a release'
         required: false
         type: boolean
         default: false
@@ -73,17 +73,16 @@ jobs:
         echo "Build verification successful"
         
     - name: Create release archive
-      if: inputs.create_artifact
+      if: inputs.create_release
       run: |
         cd dist
         zip -r ../gh-pr-approve-count-v${{ steps.version.outputs.version }}.zip .
         cd ..
         echo "Created release archive: gh-pr-approve-count-v${{ steps.version.outputs.version }}.zip"
-        
-    - name: Upload release artifact
-      if: inputs.create_artifact
-      uses: actions/upload-artifact@v4
+    
+    - name: Create release
+      uses: softprops/action-gh-release@v2
+      if: inputs.create_release
       with:
-        name: gh-pr-approve-count-v${{ steps.version.outputs.version }}
-        path: gh-pr-approve-count-v${{ steps.version.outputs.version }}.zip
-        retention-days: 30
+        files: gh-pr-approve-count-v${{ steps.version.outputs.version }}.zip
+        generate_release_notes: true
