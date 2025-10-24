@@ -86,3 +86,12 @@ jobs:
       with:
         files: gh-pr-approve-count-v${{ steps.version.outputs.version }}.zip
         generate_release_notes: true
+
+    - name: Release Edge Extension
+      uses: baptistecdr/release-edge-extension@v2.0.1
+      if: inputs.create_release
+      with:
+        api-key: ${{ secrets.PUBLISH_API_KEY }}
+        client-id: ${{ secrets.PUBLISH_CLIENT_ID }}
+        product-id: ${{ vars.PUBLISH_PRODUCT_ID }}
+        product-path: gh-pr-approve-count-v${{ steps.version.outputs.version }}.zip
