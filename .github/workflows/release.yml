@@ -26,3 +26,6 @@ jobs:
     with:
       version: ${{ needs.extract-version.outputs.version }}
       create_release: true
+    secrets:
+      PUBLISH_API_KEY: ${{ secrets.PUBLISH_API_KEY }}
+      PUBLISH_CLIENT_ID: ${{ secrets.PUBLISH_CLIENT_ID }}
