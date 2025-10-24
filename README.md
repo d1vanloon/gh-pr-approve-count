@@ -1,5 +1,7 @@
 # GitHub Pull Request Approval Count
 
+[![Release Build](https://github.com/d1vanloon/gh-pr-approve-count/actions/workflows/release.yml/badge.svg)](https://github.com/d1vanloon/gh-pr-approve-count/actions/workflows/release.yml)
+
 <img src="icons/icon.png" alt="Extension Icon" width="128" height="128" />
 
 Browser extension to display the number of approvals on the GitHub pull request list page.
