@@ -6,7 +6,6 @@ let lock = false;
 async function run() {
   if (lock) return;
   if (!location.href.includes("/pulls")) return;
-  if (document.getElementsByClassName(APPROVE_COUNT_CLASS).length > 0) return;
 
   lock = true;
   try {
@@ -28,6 +27,8 @@ async function run() {
 const ROW_SELECTOR = ".Box-row, li:has(a[data-testid='issue-pr-title-link'])";
 
 async function processRow(row: Element) {
+  if (row.getElementsByClassName(APPROVE_COUNT_CLASS).length > 0) return; // already badged
+
   const ariaLabel = await findApproveCountAriaLabelByRow(row);
   if (ariaLabel == null) return;
 
