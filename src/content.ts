@@ -1,103 +1,205 @@
 const APPROVE_COUNT_CLASS = "approve-count";
 
-setInterval(run, 1000); // for spa navigation
+/**
+ * Rows on the React pull request dashboards (`/pulls`, `/pulls/inbox` and saved
+ * views such as `/pulls/SSC_...`). Both the inbox and list layouts render rows
+ * with the same `ListItem` CSS module; the hash suffix changes between GitHub
+ * deploys, so match on the stable module-name prefix instead.
+ */
+const REACT_ROW_SELECTOR = 'li[class*="ListItem-module__listItem"]';
 
-let lock = false;
-async function run() {
-  if (lock) return;
-  if (!location.href.includes("/pulls")) return;
+/** Rows on the legacy server-rendered repository pull request list. */
+const LEGACY_ROW_SELECTOR = ".Box-row";
 
-  lock = true;
-  try {
-    await Promise.all(
-      [...document.querySelectorAll(ROW_SELECTOR)].map((row) => processRow(row))
-    );
-  } finally {
-    lock = false;
+/**
+ * The metadata line of a React row (repository, number, author, timestamp).
+ * Present in every pull request row of both React layouts.
+ */
+const REACT_BADGE_TARGET_SELECTOR = 'div[class*="Description-module__container"]';
+
+/**
+ * Accessible descriptions Primer renders for a pull request's review state,
+ * e.g. "2 review approvals", "1 review requesting changes" or
+ * "Review required before merging".
+ */
+const REVIEW_DESCRIPTION_PATTERN = /reviews? approval|reviews? requesting changes|review required/i;
+
+const APPROVE_COUNT_PATTERN = /(\d+) reviews? approval/;
+const CHANGES_REQUESTED_COUNT_PATTERN = /(\d+) reviews? requesting changes/;
+
+interface ReviewCounts {
+  approved: number;
+  changesRequested: number;
+}
+
+const NO_REVIEWS: ReviewCounts = { approved: 0, changesRequested: 0 };
+
+let scheduled = false;
+/**
+ * React re-renders rows constantly (filtering, pagination, SPA navigation) and
+ * portals the review tooltips in asynchronously, so re-run on any DOM change.
+ * Runs converge: once every row is badged a pass makes no further mutations.
+ */
+function schedule() {
+  if (scheduled) return;
+  scheduled = true;
+  setTimeout(() => {
+    scheduled = false;
+    decorateRows();
+  }, 100);
+}
+
+new MutationObserver(schedule).observe(document.documentElement, {
+  childList: true,
+  subtree: true,
+  // Review state can change in place. Watching only these attributes (which the
+  // extension never writes) keeps the observer from reacting to its own badges.
+  attributes: true,
+  attributeFilter: ["aria-label", "aria-describedby"],
+});
+setInterval(schedule, 1000); // safety net for SPA navigation
+schedule();
+
+function decorateRows() {
+  if (!location.pathname.includes("/pulls")) return;
+
+  document.querySelectorAll(LEGACY_ROW_SELECTOR).forEach(decorateLegacyRow);
+  document.querySelectorAll(REACT_ROW_SELECTOR).forEach(decorateReactRow);
+}
+
+function decorateReactRow(row: Element) {
+  // Skip non-pull-request rows, such as the "Load more" affordance.
+  if (row.querySelector('a[href*="/pull/"]') == null) return;
+
+  const counts = findReviewCounts(row);
+  const existing = row.getElementsByClassName(APPROVE_COUNT_CLASS)[0];
+  if (existing != null) {
+    // The review tooltip is portaled in asynchronously, so a row can be badged
+    // before its review state is known. Keep the badge in sync afterwards.
+    updateReviewBadge(existing as HTMLElement, counts);
+    return;
   }
+
+  if (!hasReviews(counts)) return;
+
+  const badge = createReviewBadge(counts);
+  badge.style.marginLeft = "4px";
+  badge.style.whiteSpace = "nowrap";
+
+  (row.querySelector(REACT_BADGE_TARGET_SELECTOR) ?? row).appendChild(badge);
 }
 
-/**
- * A pull request row on the list page.
- *
- * - Legacy (repository `/<owner>/<repo>/pulls`) pages render rows as `.Box-row`.
- * - The new GitHub Pull Requests page (https://github.com/pulls) is a React app
- *   whose rows are anchored by a stable `data-testid="issue-pr-title-link"`.
- */
-const ROW_SELECTOR = ".Box-row, li:has(a[data-testid='issue-pr-title-link'])";
+function decorateLegacyRow(row: Element) {
+  const description = findLegacyReviewDescription(row);
+  if (description == null) return;
 
-async function processRow(row: Element) {
-  if (row.getElementsByClassName(APPROVE_COUNT_CLASS).length > 0) return; // already badged
-
-  const ariaLabel = await findApproveCountAriaLabelByRow(row);
-  if (ariaLabel == null) return;
-
-  const approveCountString = /(\d+) review approval/.exec(ariaLabel)?.[1];
-  const approveCount = Number(approveCountString || 0);
-
-  if (row.matches(".Box-row")) {
-    // Legacy repository pulls list.
-    row.querySelector(".hide-sm")?.appendChild(createApproveCountBadge(approveCount));
-  } else {
-    // New React pull requests dashboard.
-    insertBadgeIntoReactRow(row, approveCount);
+  const counts = parseReviewCounts(description);
+  const existing = row.getElementsByClassName(APPROVE_COUNT_CLASS)[0];
+  if (existing != null) {
+    updateReviewBadge(existing as HTMLElement, counts);
+    return;
   }
+
+  if (!hasReviews(counts)) return;
+
+  const badge = createReviewBadge(counts);
+  badge.classList.add("ml-2", "flex-1", "flex-shrink-0");
+
+  row.querySelector(".hide-sm")?.appendChild(badge);
 }
 
 /**
- * The approval count is surfaced on a link whose accessible name is
- * e.g. "3 review approvals". This holds on both the legacy list and the new
- * React dashboard, so it's a stable hook across both.
+ * A legacy row can contain several tooltipped links (CI status, review state),
+ * so pick the one that actually describes the review state rather than the
+ * first one in the row.
  */
-function findApproveCountLink(row: Element): HTMLAnchorElement | null {
-  return (
-    row.querySelector<HTMLAnchorElement>("a.Link--muted.tooltipped") ??
-    row.querySelector<HTMLAnchorElement>("a[aria-label*='review approval']")
-  );
-}
-
-/**
- * @returns e.g. 3 review approval
- */
-async function findApproveCountAriaLabelByRow(row: Element): Promise<string | null> {
-  const eachWaitMs = 100;
-  let waitedMs = 0;
-  while (waitedMs < 30000) {
-    // maximum wait 30 seconds
-    const ariaLabel = findApproveCountLink(row)?.getAttribute("aria-label");
-    if (ariaLabel != null) return ariaLabel;
-
-    await new Promise((res) => setTimeout(res, eachWaitMs));
-    waitedMs += eachWaitMs;
+function findLegacyReviewDescription(row: Element): string | null {
+  for (const link of row.querySelectorAll("a.Link--muted.tooltipped")) {
+    const label = link.getAttribute("aria-label");
+    if (label != null && REVIEW_DESCRIPTION_PATTERN.test(label)) return label;
   }
   return null;
 }
 
 /**
- * On the React dashboard the approval-count link is the most reliable anchor;
- * place the badge immediately after it so it lines up with the row metadata.
- * Falls back to the row's title link container when the link isn't present.
+ * Reads how many reviews a React row has, defaulting to none when the pull
+ * request has not been reviewed yet.
  */
-function insertBadgeIntoReactRow(row: Element, approveCount: number) {
-  const badge = createApproveCountBadge(approveCount);
+function findReviewCounts(row: Element): ReviewCounts {
+  const description = findReviewDescription(row);
+  return description == null ? NO_REVIEWS : parseReviewCounts(description);
+}
 
-  const approveLink = findApproveCountLink(row);
-  if (approveLink?.parentElement) {
-    approveLink.parentElement.appendChild(badge);
+function hasReviews({ approved, changesRequested }: ReviewCounts): boolean {
+  return approved > 0 || changesRequested > 0;
+}
+
+/**
+ * The review state is announced by a Primer tooltip that React portals to the
+ * end of `<body>`, so it cannot be found by searching within the row. Follow the
+ * row's `aria-describedby` references to reach it.
+ */
+function findReviewDescription(row: Element): string | null {
+  for (const element of row.querySelectorAll("[aria-describedby]")) {
+    const ids = element.getAttribute("aria-describedby")?.split(/\s+/) ?? [];
+    for (const id of ids) {
+      const label = document.getElementById(id)?.getAttribute("aria-label");
+      if (label != null && REVIEW_DESCRIPTION_PATTERN.test(label)) return label;
+    }
+  }
+  return null;
+}
+
+/**
+ * @param description e.g. "3 review approvals" or "1 review requesting changes"
+ */
+function parseReviewCounts(description: string): ReviewCounts {
+  return {
+    approved: Number(APPROVE_COUNT_PATTERN.exec(description)?.[1] ?? 0),
+    changesRequested: Number(CHANGES_REQUESTED_COUNT_PATTERN.exec(description)?.[1] ?? 0),
+  };
+}
+
+function createReviewBadge(counts: ReviewCounts) {
+  const span = document.createElement("span");
+  span.classList.add(APPROVE_COUNT_CLASS);
+  updateReviewBadge(span, counts);
+
+  return span;
+}
+
+/**
+ * Renders the badge, or removes it entirely once a pull request no longer has
+ * any reviews (the review state can change while the page is open).
+ */
+function updateReviewBadge(badge: HTMLElement, counts: ReviewCounts) {
+  if (!hasReviews(counts)) {
+    badge.remove();
     return;
   }
 
-  row
-    .querySelector("a[data-testid='issue-pr-title-link']")
-    ?.closest("div")
-    ?.appendChild(badge);
-}
+  const { approved, changesRequested } = counts;
+  const signature = `${approved}/${changesRequested}`;
+  if (badge.dataset["reviewCounts"] === signature) return;
 
-function createApproveCountBadge(approveCount: number) {
-  const span = document.createElement("span");
-  span.classList.add(APPROVE_COUNT_CLASS);
-  span.classList.add("ml-2", "flex-1", "flex-shrink-0");
-  span.append(`✅ ${approveCount}`);
+  badge.dataset["reviewCounts"] = signature;
+  badge.replaceChildren();
 
-  return span;
+  const titles: string[] = [];
+  if (approved > 0) {
+    badge.append(`✅ ${approved}`);
+    titles.push(`${approved} review ${approved === 1 ? "approval" : "approvals"}`);
+  }
+  if (changesRequested > 0) {
+    const requested = document.createElement("span");
+    requested.style.color = "var(--fgColor-danger, var(--color-danger-fg, #d1242f))";
+    if (approved > 0) requested.style.marginLeft = "4px";
+    requested.append(`❌ ${changesRequested}`);
+    badge.appendChild(requested);
+    titles.push(
+      `${changesRequested} ${changesRequested === 1 ? "review" : "reviews"} requesting changes`,
+    );
+  }
+
+  badge.title = titles.join(", ");
 }
