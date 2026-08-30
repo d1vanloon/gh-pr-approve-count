@@ -4,7 +4,16 @@
 
 <img src="icons/icon.png" alt="Extension Icon" width="128" height="128" />
 
-Browser extension to display the number of approvals on the GitHub pull request list page.
+Browser extension to display pull request review counts on the GitHub pull request lists.
+
+- Shows ✅ with the number of approving reviews.
+- Shows ❌ in red with the number of reviews requesting changes.
+- Shows nothing at all for pull requests that have no reviews yet.
+
+Supported pages:
+
+- The repository pull request list (`github.com/<owner>/<repo>/pulls`).
+- The pull request dashboard, including the inbox and saved views (`github.com/pulls`).
 
 ## Building
 
